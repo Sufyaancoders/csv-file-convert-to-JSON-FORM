@@ -24,6 +24,7 @@ const FileUpload = () => {
 
 const MappingPage = () => {
   const [mappings, setMappings] = useState({});
+  const [countries, setCountries] = useState([]);
   const csvData = JSON.parse(localStorage.getItem("csvData")) || [];
   const headers = Object.keys(csvData[0] || {});
   const fields = ["ownerId", "conditionType", "vehicleType", "driverSide", "brand", "vehicleModel", 
@@ -48,7 +49,8 @@ const MappingPage = () => {
       "rearTailWorkLights", "mudguards", "ptoShield", "threePointHitch", "hydraulicPowerForHeavyLifting",
       "acHeater", "ventilatedSeats", "massageSeats", "powerSeats", "powerTrunk", "keylessEntry", "remoteStart",
        "ambientLighting", "wirelessChargingPads", "rainSensingWipers", "automaticParking", "rearViewCamera",
-       "pushStartIgnition", "coverImage", "images", "location", "currency", "price", "priceInUsd", "status",
+       "pushStartIgnition", "coverImage", "images", "location",  "continent",
+          "countries","currency", "price", "priceInUsd", "status",
        "stock", "sku","stockType","color","quantity","date","productSku"," length"
           ,"width", "height"];
 
@@ -62,18 +64,76 @@ const MappingPage = () => {
   const handleMappingChange = (field, value) => {
     setMappings((prev) => ({ ...prev, [field]: value }));
   };
+  const handleCountryChange = (value) => {
+    const countryArray = value.split(',').map(country => country.trim());
+    setCountries(countryArray);
+  };
+  const parseArrayField = (value) => {
+    if (!value || value === "null") return ["null"];
+    
+    try {
+      // Check if it's a JSON string containing array with mixed types
+      if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => {
+            if (typeof item === 'object') return item;
+            return item.toString();
+          });
+        }
+        return [parsed]; // If single object
+      }
+      
+      // Handle comma-separated mixed data
+      if (typeof value === 'string' && value.includes(',')) {
+        return value.split(',').map(item => {
+          item = item.trim();
+          try {
+            // Try parsing each item as JSON
+            if (item.startsWith('{') || item.startsWith('[')) {
+              return JSON.parse(item);
+            }
+          } catch {
+            // If parsing fails, return as string
+            return item;
+          }
+          return item;
+        });
+      }
+      
+      // Single value - try parsing as object or return as string
+      if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+        return [JSON.parse(value)];
+      }
+      
+      return [value.toString()];
+    } catch (error) {
+      console.warn('Error parsing value:', value, error);
+      return ["null"];
+    }
+  };
+  
 
   const handleSubmit = () => {
     const finalObject = {
       products: csvData.map(row => {
-        const product = Object.fromEntries(fields.map(field => [field, row[mappings[field]] || "null"]));
-        product.equipment = ["ABS", "ESP"];
+        const stockFields = ['sku', 'stockType', 'color', 'quantity', 'date'];
+        const locationsFields = ['continent', 'countries'];
+     //   const product = Object.fromEntries(fields.map(field => [field, row[mappings[field]] || "null"]));
+     const product = Object.fromEntries(
+      fields
+        .filter(field => !stockFields.includes(field)).filter(field => !locationsFields.includes(field))
+        .map(field => [field, row[mappings[field]] || "null"])
+    );
+        product.equipment = parseArrayField(row[mappings["equipment"]] || "null");
+        product.images=parseArrayField(row[mappings["images"]] || "null");
         product.dimension = {
           length: row[mappings["length"]] || "null",
           width: row[mappings["width"]] || "null",
           height: row[mappings["height"]] || "null"
         };
         product.stock = [
+          parseArrayField([row[mappings["stock"]] || "null"]),
           {
             sku: row[mappings["sku"]] || "null",
             stockType: row[mappings["stockType"]] || "null",
@@ -82,16 +142,23 @@ const MappingPage = () => {
             date: row[mappings["date"]] || "null"
           }
         ];
-      product.location= [
-        {
-          continent: row[mappings["continent"]] || "null",
-          "countries": [
-            "India",
-            "China",
-            "Japan"
-          ]
+      product.location= 
+        [parseArrayField([row[mappings["location"]] || "null"]),
+          {
+          continent:row[mappings["continent"]] || "null",
+          // "countries": [
+          //   "India",
+          //   "China",
+          //   "Japan"
+          // ]
+          countries:parseArrayField([row[mappings["countries"]] || "null"]),
+          //  countries.length > 0 ? countries : ["null"]
         }
-      ]
+          ] ;
+          product.equipment=parseArrayField(
+            [row[mappings["equipment"]] || "null"]),
+          
+          
 
         product.dimensions = {
           length: row[mappings["length"]] || "null" ,
@@ -101,6 +168,7 @@ const MappingPage = () => {
         return product;
       })
     };
+
     console.log("Final Object:", JSON.stringify(finalObject, null, 2));
     // console.log(finalObject);
   };
@@ -113,11 +181,22 @@ const MappingPage = () => {
           <div key={field} style={{ marginBottom: "20px" }}>
             <Typography>{field}</Typography>
             <Select value={mappings[field] || ""} onChange={(e) => handleMappingChange(field, e.target.value)} fullWidth>
+             
               <MenuItem value="">Select a field</MenuItem>
               {headers.map((header) => (<MenuItem key={header} value={header}>{header}</MenuItem>))}
             </Select>
+            
           </div>
+          
         ))}
+        {/* <div style={{ marginBottom: "20px" }}>
+          <Typography>Countries (comma-separated)</Typography>
+          <Input 
+            fullWidth
+            placeholder="Enter countries (e.g., India, China, Japan)"
+            onChange={(e) => handleCountryChange(e.target.value)}
+          />
+        </div> */}
       </div>
       <Button variant="contained" onClick={handleSubmit} style={{ marginTop: "20px" }}>Submit</Button>
     </Container>
