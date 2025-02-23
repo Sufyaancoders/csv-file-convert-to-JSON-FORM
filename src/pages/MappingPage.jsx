@@ -68,16 +68,56 @@ const MappingPage = () => {
     const countryArray = value.split(',').map(country => country.trim());
     setCountries(countryArray);
   };
+  
   const parseArrayField = (value) => {
     if (!value || value === "null") return ["null"];
-    
     try {
+      // Clean up quotes and escape characters
+      const cleanValue = typeof value === 'string' 
+        ? value
+            .replace(/\\"/g, '"')          // Replace \" with "
+            .replace(/\\\\/g, '\\')        // Replace \\ with \
+            .replace(/"{2,}/g, '"')        // Replace multiple quotes with single
+            .replace(/^"(.*)"$/, '$1')     // Remove wrapping quotes
+        : value;
+    try {
+      const parsed = JSON.parse(cleanValue);
+      
+      // If it's already an array, process each item
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => {
+          if (typeof item === 'object') return item;
+          return item.toString();
+        });
+      }
+      
+      // If it's an object, wrap in array
+      if (typeof parsed === 'object') {
+        return [parsed];
+      }
+    } catch {}
+//       // Clean up double-escaped quotes
+//       const cleanValue = typeof value === 'string' 
+//       ? value.replace(/\\"/g, '"')          // Replace \" with "
+//       .replace(/\\\\/g, '\\')         // Replace \\ with \
+//       .replace(/"{2,}/g, '"')         // Replace multiple quotes with single
+//       .replace(/^"(.*)"$/, '$1')      // Remove wrapping quotes
+// : value;
+  
       // Check if it's a JSON string containing array with mixed types
-      if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
-        const parsed = JSON.parse(value);
+      if (typeof cleanValue === 'string' && (cleanValue.startsWith('[') || cleanValue.startsWith('{'))) {
+        const parsed = JSON.parse(cleanValue);
         if (Array.isArray(parsed)) {
           return parsed.map(item => {
             if (typeof item === 'object') return item;
+            // Try parsing string items that might be stringified objects
+            if (typeof item === 'string' && (item.startsWith('{') || item.startsWith('['))) {
+              try {
+                return JSON.parse(item);
+              } catch {
+                return item;
+              }
+            }
             return item.toString();
           });
         }
@@ -85,34 +125,26 @@ const MappingPage = () => {
       }
       
       // Handle comma-separated mixed data
-      if (typeof value === 'string' && value.includes(',')) {
-        return value.split(',').map(item => {
+      if (typeof cleanValue === 'string' && cleanValue.includes(',')) {
+        return cleanValue.split(',').map(item => {
           item = item.trim();
           try {
-            // Try parsing each item as JSON
             if (item.startsWith('{') || item.startsWith('[')) {
               return JSON.parse(item);
             }
           } catch {
-            // If parsing fails, return as string
             return item;
           }
           return item;
         });
       }
       
-      // Single value - try parsing as object or return as string
-      if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
-        return [JSON.parse(value)];
-      }
-      
-      return [value.toString()];
+      return [cleanValue.toString()];
     } catch (error) {
       console.warn('Error parsing value:', value, error);
       return ["null"];
     }
   };
-  
 
   const handleSubmit = () => {
     const finalObject = {
@@ -125,6 +157,7 @@ const MappingPage = () => {
         .filter(field => !stockFields.includes(field)).filter(field => !locationsFields.includes(field))
         .map(field => [field, row[mappings[field]] || "null"])
     );
+    //"[""hammer"", {""type"": ""power"", ""name"": ""drill""}, ""wrench""]"
         product.equipment = parseArrayField(row[mappings["equipment"]] || "null");
         product.images=parseArrayField(row[mappings["images"]] || "null");
         product.dimension = {
